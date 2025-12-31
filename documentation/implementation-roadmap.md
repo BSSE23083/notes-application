@@ -912,19 +912,6 @@ You can now view notes-app in the browser.
 
 ## 📦 Phase 6: Production Build (20 min)
 
-git remote add origin https://github.com/bsse23083/notes-app.git
-git remote set-url origin https://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@github.com/bsse23083/notes-app.git
-
-token: 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
-
-git:https://bsse23083@github.com
-
-git config --local user.email "bsse23083@example.com"
-
-Token 2: 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
-
-git remote set-url origin https://bsse23083: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@github.com/bsse23083/notes-app.git
-
 ### Step 6.1: Build Frontend
 ```bash
 cd notes-app
