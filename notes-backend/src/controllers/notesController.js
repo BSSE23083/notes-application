@@ -1,11 +1,22 @@
-const NotesModel = require('../models/NotesModel');
 const logger = require('../utils/logger');
+const { PutCommand, GetCommand, DeleteCommand, QueryCommand, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
 
 class NotesController {
+  // GET ALL NOTES FOR A USER
   async getNotes(req, res, next) {
     try {
       const userId = req.userId;
-      const notes = NotesModel.getNotesByUserId(userId);
+      const docClient = req.app.get('db');
+
+      const command = new QueryCommand({
+        TableName: "Notes",
+        KeyConditionExpression: "userId = :uid",
+        ExpressionAttributeValues: { ":uid": userId },
+      });
+
+      const data = await docClient.send(command);
+      const notes = data.Items || [];
+
       logger.debug(`Fetched ${notes.length} notes for user ${userId}`);
 
       res.json({
@@ -19,12 +30,19 @@ class NotesController {
     }
   }
 
+  // GET A SINGLE NOTE BY ID
   async getNoteById(req, res, next) {
     try {
       const { noteId } = req.params;
       const userId = req.userId;
+      const docClient = req.app.get('db');
 
-      const note = NotesModel.getNoteById(noteId, userId);
+      const command = new GetCommand({
+        TableName: "Notes",
+        Key: { userId, noteId },
+      });
+
+      const { Item: note } = await docClient.send(command);
 
       if (!note) {
         return res.status(404).json({
@@ -43,10 +61,12 @@ class NotesController {
     }
   }
 
+  // CREATE A NEW NOTE
   async createNote(req, res, next) {
     try {
       const { title, content } = req.body;
       const userId = req.userId;
+      const docClient = req.app.get('db');
 
       if (!content || content.trim() === '') {
         return res.status(400).json({
@@ -55,12 +75,22 @@ class NotesController {
         });
       }
 
-      const note = NotesModel.createNote(userId, {
+      const note = {
+        userId: userId,
+        noteId: Date.now().toString(),
         title: title || 'Untitled',
         content,
+        createdAt: new Date().toISOString(),
+      };
+
+      const command = new PutCommand({
+        TableName: "Notes",
+        Item: note,
       });
 
-      logger.info(`Note created: ${note.id} for user ${userId}`);
+      await docClient.send(command);
+
+      logger.info(`Note created: ${note.noteId} for user ${userId}`);
 
       res.status(201).json({
         message: 'Note created successfully',
@@ -72,20 +102,13 @@ class NotesController {
     }
   }
 
+  // UPDATE AN EXISTING NOTE
   async updateNote(req, res, next) {
     try {
       const { noteId } = req.params;
       const { title, content } = req.body;
       const userId = req.userId;
-
-      const note = NotesModel.getNoteById(noteId, userId);
-
-      if (!note) {
-        return res.status(404).json({
-          error: 'NotFoundError',
-          message: 'Note not found',
-        });
-      }
+      const docClient = req.app.get('db');
 
       if (content !== undefined && (!content || content.trim() === '')) {
         return res.status(400).json({
@@ -94,16 +117,25 @@ class NotesController {
         });
       }
 
-      const updatedNote = NotesModel.updateNote(noteId, userId, {
-        title: title || note.title,
-        content: content !== undefined ? content : note.content,
+      const command = new UpdateCommand({
+        TableName: "Notes",
+        Key: { userId, noteId },
+        UpdateExpression: "set title = :t, content = :c, updatedAt = :u",
+        ExpressionAttributeValues: {
+          ":t": title || 'Untitled',
+          ":c": content,
+          ":u": new Date().toISOString(),
+        },
+        ReturnValues: "ALL_NEW",
       });
+
+      const data = await docClient.send(command);
 
       logger.info(`Note updated: ${noteId}`);
 
       res.json({
         message: 'Note updated successfully',
-        note: updatedNote,
+        note: data.Attributes,
       });
     } catch (error) {
       logger.error('Update note error', error.message);
@@ -111,21 +143,19 @@ class NotesController {
     }
   }
 
+  // DELETE A NOTE
   async deleteNote(req, res, next) {
     try {
       const { noteId } = req.params;
       const userId = req.userId;
+      const docClient = req.app.get('db');
 
-      const note = NotesModel.getNoteById(noteId, userId);
+      const command = new DeleteCommand({
+        TableName: "Notes",
+        Key: { userId, noteId },
+      });
 
-      if (!note) {
-        return res.status(404).json({
-          error: 'NotFoundError',
-          message: 'Note not found',
-        });
-      }
-
-      NotesModel.deleteNote(noteId, userId);
+      await docClient.send(command);
       logger.info(`Note deleted: ${noteId}`);
 
       res.json({
@@ -137,16 +167,25 @@ class NotesController {
     }
   }
 
+  // GET STATS
   async getStats(req, res, next) {
     try {
       const userId = req.userId;
-      const count = NotesModel.getNoteCount(userId);
-      const notes = NotesModel.getNotesByUserId(userId);
+      const docClient = req.app.get('db');
+
+      const command = new QueryCommand({
+        TableName: "Notes",
+        KeyConditionExpression: "userId = :uid",
+        ExpressionAttributeValues: { ":uid": userId },
+      });
+
+      const data = await docClient.send(command);
+      const notes = data.Items || [];
 
       res.json({
         message: 'Statistics retrieved successfully',
         stats: {
-          totalNotes: count,
+          totalNotes: notes.length,
           totalCharacters: notes.reduce((sum, n) => sum + n.content.length, 0),
         },
       });
