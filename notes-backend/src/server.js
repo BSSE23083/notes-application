@@ -7,6 +7,9 @@ const notesRoutes = require('./routes/notesRoutes');
 const errorHandler = require('./middleware/errorHandler');
 const groqChatRoutes = require('./routes/groqChatRoutes');
 
+const app = express();
+
+
 // --- DYNAMODB IMPLEMENTATION START ---
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient } = require("@aws-sdk/lib-dynamodb");
@@ -20,7 +23,6 @@ const docClient = DynamoDBDocumentClient.from(client);
 app.set('db', docClient); 
 // --- DYNAMODB IMPLEMENTATION END ---
 
-const app = express();
 const PORT = process.env.PORT || 8081;
 
 // CORS Configuration
