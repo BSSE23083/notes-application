@@ -1,5 +1,4 @@
 import ReactMarkdown from 'react-markdown';
-
 import React, { useState, useEffect } from 'react';
 import notesApi from '../api/notesApi';
 import '../App.css';
@@ -45,6 +44,7 @@ const NotesPage = ({ onLogout }) => {
   };
 
   const handleNewPage = () => {
+    // Note: No noteId here means it is a new note
     setEditingNote({ title: '', content: '' });
   };
 
@@ -56,9 +56,10 @@ const NotesPage = ({ onLogout }) => {
     try {
       setError('');
       await notesApi.deleteNote(noteId);
-      const remaining = notes.filter((n) => n.id !== noteId);
+      // Change: Filter using noteId to match DynamoDB structure
+      const remaining = notes.filter((n) => n.noteId !== noteId);
       setNotes(remaining);
-      if (editingNote && editingNote.id === noteId) {
+      if (editingNote && editingNote.noteId === noteId) {
         setEditingNote(remaining[0] || null);
       }
     } catch (err) {
@@ -71,18 +72,26 @@ const NotesPage = ({ onLogout }) => {
     setSaving(true);
     try {
       setError('');
-      if (editingNote.id) {
-        await notesApi.updateNote(editingNote.id, {
+      // Change: Check for noteId instead of id
+      if (editingNote.noteId) {
+        await notesApi.updateNote(editingNote.noteId, {
           title: editingNote.title,
           content: editingNote.content,
         });
+        // Update local state directly to prevent "reappearing" issues
+        setNotes(prev => prev.map(n => n.noteId === editingNote.noteId ? editingNote : n));
       } else {
-        const created = await notesApi.createNote({
+        const response = await notesApi.createNote({
           title: editingNote.title,
           content: editingNote.content,
         });
+        // Access the note from the response object
+        const created = response.note || response;
         setEditingNote(created);
+        // Add to local state
+        setNotes(prev => [created, ...prev]);
       }
+      // Optional: reload notes to sync with server timestamps
       await loadNotes();
     } catch (err) {
       setError(err.message || 'Error saving page');
@@ -133,10 +142,11 @@ const NotesPage = ({ onLogout }) => {
             </button>
           ) : (
             notes.map((note) => {
-              const isActive = editingNote && editingNote.id === note.id;
+              // Change: Compare using noteId
+              const isActive = editingNote && editingNote.noteId === note.noteId;
               return (
                 <div
-                  key={note.id}
+                  key={note.noteId}
                   className={
                     'sidebar-page-row' +
                     (isActive ? ' sidebar-page-row-active' : '')
@@ -154,7 +164,7 @@ const NotesPage = ({ onLogout }) => {
                   <button
                     type="button"
                     className="sidebar-page-delete"
-                    onClick={() => handleDeletePage(note.id)}
+                    onClick={() => handleDeletePage(note.noteId)}
                   >
                     ×
                   </button>
