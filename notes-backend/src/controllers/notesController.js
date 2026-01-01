@@ -5,8 +5,7 @@ class NotesController {
   // GET ALL NOTES FOR A USER
   async getNotes(req, res, next) {
     try {
-      const userId = req.userId;
-      const docClient = req.app.get('db');
+      const userId = req.userId || (req.user && req.user.id); const docClient = req.app.get('db');
 
       const command = new QueryCommand({
         TableName: "Notes",
@@ -61,12 +60,20 @@ class NotesController {
     }
   }
 
-  // CREATE A NEW NOTE
   async createNote(req, res, next) {
     try {
       const { title, content } = req.body;
-      const userId = req.userId;
+
+      // FIX: Ensure we are getting the ID regardless of how the middleware stores it
+      const userId = req.userId || (req.user && req.user.id) || (req.user && req.user.userId);
       const docClient = req.app.get('db');
+
+      // Debug log to see if userId is actually present
+      logger.info(`Attempting to save note. UserID: ${userId}`);
+
+      if (!userId) {
+        return res.status(401).json({ error: 'User ID not found in request' });
+      }
 
       if (!content || content.trim() === '') {
         return res.status(400).json({
@@ -76,8 +83,8 @@ class NotesController {
       }
 
       const note = {
-        userId: userId,
-        noteId: Date.now().toString(),
+        userId: userId, // MUST match your DynamoDB Partition Key name exactly
+        noteId: Date.now().toString(), // MUST match your DynamoDB Sort Key name exactly
         title: title || 'Untitled',
         content,
         createdAt: new Date().toISOString(),
@@ -88,16 +95,18 @@ class NotesController {
         Item: note,
       });
 
+      // Execute the save
       await docClient.send(command);
 
-      logger.info(`Note created: ${note.noteId} for user ${userId}`);
+      logger.info(`SUCCESS: Note created in DynamoDB: ${note.noteId} for user ${userId}`);
 
       res.status(201).json({
         message: 'Note created successfully',
         note,
       });
     } catch (error) {
-      logger.error('Create note error', error.message);
+      // Improved error logging
+      logger.error(`DynamoDB Save Failure: ${error.message}`);
       next(error);
     }
   }
