@@ -5,7 +5,20 @@ const logger = require('./utils/logger');
 const authRoutes = require('./routes/authRoutes');
 const notesRoutes = require('./routes/notesRoutes');
 const errorHandler = require('./middleware/errorHandler');
-const groqChatRoutes = require('./routes/groqChatRoutes'); // <-- new Groq chat route
+const groqChatRoutes = require('./routes/groqChatRoutes');
+
+// --- DYNAMODB IMPLEMENTATION START ---
+const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
+const { DynamoDBDocumentClient } = require("@aws-sdk/lib-dynamodb");
+
+// Initialize DynamoDB Client
+// The region 'us-east-1' is standard for AWS Learner Labs
+const client = new DynamoDBClient({ region: "us-east-1" });
+const docClient = DynamoDBDocumentClient.from(client);
+
+// Attach docClient to the app so it can be accessed in your route files
+app.set('db', docClient); 
+// --- DYNAMODB IMPLEMENTATION END ---
 
 const app = express();
 const PORT = process.env.PORT || 8081;
@@ -13,7 +26,7 @@ const PORT = process.env.PORT || 8081;
 // CORS Configuration
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    origin: process.env.CORS_ORIGIN || '*', // Changed to '*' for easier EC2 access
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -38,7 +51,7 @@ app.get('/health', (req, res) => {
 // ROUTES
 app.use('/api/auth', authRoutes);
 app.use('/api/notes', notesRoutes);
-app.use('/api/chat', groqChatRoutes); // <-- /api/chat now uses Groq
+app.use('/api/chat', groqChatRoutes);
 
 // 404 Handler
 app.use((req, res) => {
