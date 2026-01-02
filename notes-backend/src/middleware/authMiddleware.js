@@ -1,3 +1,4 @@
+const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 
 const verifyToken = (req, res, next) => {
@@ -21,8 +22,11 @@ const verifyToken = (req, res, next) => {
 
     const token = parts[1];
 
-    // Mock Cognito Token Verification
-    const decodedToken = _decodeAndVerifyToken(token);
+    // Verify JWT Token using the secret key
+    const decodedToken = jwt.verify(
+      token, 
+      process.env.JWT_SECRET || 'your_secret_key'
+    );
 
     // Attach user info to request
     req.userId = decodedToken.userId;
@@ -33,26 +37,15 @@ const verifyToken = (req, res, next) => {
     next();
   } catch (error) {
     logger.error('Token verification failed', error.message);
+    
+    // Specifically handle expired tokens for better frontend feedback
+    const message = error.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token';
+    
     return res.status(401).json({
       error: 'Unauthorized',
-      message: 'Invalid or expired token',
+      message: message,
     });
   }
 };
-
-function _decodeAndVerifyToken(token) {
-  try {
-    const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
-
-    const currentTime = Math.floor(Date.now() / 1000);
-    if (decoded.exp && decoded.exp < currentTime) {
-      throw new Error('Token expired');
-    }
-
-    return decoded;
-  } catch (error) {
-    throw new Error(`Token decode failed: ${error.message}`);
-  }
-}
 
 module.exports = { verifyToken };

@@ -1,67 +1,67 @@
 // notes-backend/src/models/AuthModel.js
+const { PutCommand, GetCommand } = require("@aws-sdk/lib-dynamodb");
 
 class AuthModel {
-  constructor() {
-    this.users = this.loadUsers();  // ← Load on startup
+  constructor(db) {
+    // We pass the docClient (db) from the controller
+    this.db = db;
+    this.tableName = "Users";
   }
 
-  loadUsers() {
-    if (!global.persistedUsers) {
-      global.persistedUsers = [];
-    }
-    return global.persistedUsers;
-  }
-
-  saveUsers() {
-    global.persistedUsers = this.users;  // ← Save to persistent storage
-  }
-
-  createUser(userId, email, passwordHash) {
-    const newUser = {
-      userId,
-      email,
-      passwordHash,
-      createdAt: new Date().toISOString(),
+  /**
+   * Creates a new user in the DynamoDB 'Users' table
+   *
+   */
+  async createUser(userData) {
+    const params = {
+      TableName: this.tableName,
+      Item: {
+        email: userData.email,      // Partition Key
+        password: userData.password, // Hashed password from controller
+        userId: userData.userId,
+        createdAt: new Date().toISOString(),
+      },
+      // Ensures we don't overwrite an existing user with the same email
+      ConditionExpression: "attribute_not_exists(email)",
     };
-    this.users.push(newUser);
-    this.saveUsers();  // ← KEY FIX: Save after creating
-    return newUser;
-  }
 
-  findUserByEmail(email) {
-    return this.users.find((user) => user.email === email);
-  }
-
-  findUserById(userId) {
-    return this.users.find((user) => user.userId === userId);
-  }
-
-  userExists(email) {
-    return this.users.some((user) => user.email === email);
-  }
-
-  updateUser(userId, updates) {
-    const userIndex = this.users.findIndex((u) => u.userId === userId);
-    if (userIndex !== -1) {
-      this.users[userIndex] = { ...this.users[userIndex], ...updates };
-      this.saveUsers();  // ← KEY FIX: Save after updating
-      return this.users[userIndex];
+    try {
+      await this.db.send(new PutCommand(params));
+      return params.Item;
+    } catch (error) {
+      if (error.name === "ConditionalCheckFailedException") {
+        throw new Error("UserAlreadyExists");
+      }
+      throw error;
     }
-    return null;
   }
 
-  getAllUsers() {
-    return this.users;
-  }
+  /**
+   * Retrieves a user by their email (Partition Key)
+   *
+   */
+  async findUserByEmail(email) {
+    const params = {
+      TableName: this.tableName,
+      Key: {
+        email: email,
+      },
+    };
 
-  deleteUser(userId) {
-    const index = this.users.findIndex((u) => u.userId === userId);
-    if (index !== -1) {
-      this.users.splice(index, 1);
-      this.saveUsers();  // ← KEY FIX: Save after deleting
-      return true;
+    try {
+      const response = await this.db.send(new GetCommand(params));
+      return response.Item; // Returns undefined if user not found
+    } catch (error) {
+      throw error;
     }
-    return false;
+  }
+
+  /**
+   * Checks if a user exists
+   */
+  async userExists(email) {
+    const user = await this.findUserByEmail(email);
+    return !!user;
   }
 }
 

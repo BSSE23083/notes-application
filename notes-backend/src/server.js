@@ -6,6 +6,9 @@ const authRoutes = require('./routes/authRoutes');
 const notesRoutes = require('./routes/notesRoutes');
 const errorHandler = require('./middleware/errorHandler');
 const groqChatRoutes = require('./routes/groqChatRoutes');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
 
 const app = express();
 

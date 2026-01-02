@@ -1,10 +1,20 @@
 const AuthModel = require('../models/AuthModel');
 const logger = require('../utils/logger');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { v4: uuidv4 } = require('uuid');
 
 class AuthController {
+  // Helper to initialize the model with the DynamoDB client
+  _getModel(req) {
+    const db = req.app.get('db');
+    return new AuthModel(db);
+  }
+
   async signup(req, res, next) {
     try {
       const { email, password } = req.body;
+      const model = this._getModel(req);
 
       if (!email || !password) {
         return res.status(400).json({
@@ -20,22 +30,34 @@ class AuthController {
         });
       }
 
-      if (AuthModel.userExists(email)) {
+      // Check if user exists in DynamoDB
+      const existingUser = await model.findUserByEmail(email);
+      if (existingUser) {
         return res.status(409).json({
           error: 'ConflictError',
           message: 'User with this email already exists',
         });
       }
 
-      const user = AuthModel.createUser({ email, password });
-      logger.info(`User created: ${user.id} (${email})`);
-      const token = _generateToken(user.id, email);
+      // Hash the password before saving
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
+      const userId = uuidv4();
+      const user = await model.createUser({ 
+        userId, 
+        email, 
+        password: hashedPassword 
+      });
+
+      logger.info(`User created: ${userId} (${email})`);
+      const token = _generateToken(userId, email);
 
       res.status(201).json({
         message: 'User created successfully',
         user: {
-          id: user.id,
-          email: user.email,
+          id: userId,
+          email: email,
         },
         token,
       });
@@ -48,6 +70,7 @@ class AuthController {
   async login(req, res, next) {
     try {
       const { email, password } = req.body;
+      const model = this._getModel(req);
 
       if (!email || !password) {
         return res.status(400).json({
@@ -56,22 +79,24 @@ class AuthController {
         });
       }
 
-      const user = AuthModel.findUserByEmail(email);
+      // Find user in DynamoDB
+      const user = await model.findUserByEmail(email);
 
-      if (!user || user.password !== password) {
+      // Compare provided password with hashed password in DB
+      if (!user || !(await bcrypt.compare(password, user.password))) {
         return res.status(401).json({
           error: 'AuthenticationError',
           message: 'Invalid email or password',
         });
       }
 
-      const token = _generateToken(user.id, email);
-      logger.info(`User logged in: ${user.id} (${email})`);
+      const token = _generateToken(user.userId, email);
+      logger.info(`User logged in: ${user.userId} (${email})`);
 
       res.json({
         message: 'Login successful',
         user: {
-          id: user.id,
+          id: user.userId,
           email: user.email,
         },
         token,
@@ -84,7 +109,9 @@ class AuthController {
 
   async verify(req, res, next) {
     try {
-      const user = AuthModel.findUserById(req.userId);
+      // req.userId comes from your auth middleware
+      const model = this._getModel(req);
+      const user = await model.findUserByEmail(req.userEmail); // or findByUserId if implemented
 
       if (!user) {
         return res.status(404).json({
@@ -96,7 +123,7 @@ class AuthController {
       res.json({
         message: 'Token is valid',
         user: {
-          id: user.id,
+          id: user.userId,
           email: user.email,
         },
       });
@@ -107,16 +134,16 @@ class AuthController {
   }
 }
 
+/**
+ * Generates a signed JWT token
+ *
+ */
 function _generateToken(userId, email) {
-  const payload = {
-    userId,
-    email,
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
-  };
-
-  const tokenString = JSON.stringify(payload);
-  return Buffer.from(tokenString).toString('base64');
+  return jwt.sign(
+    { userId, email },
+    process.env.JWT_SECRET || 'your_secret_key',
+    { expiresIn: '7d' }
+  );
 }
 
 module.exports = new AuthController();
