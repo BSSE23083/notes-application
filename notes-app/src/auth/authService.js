@@ -1,49 +1,41 @@
-const MOCK_USERS = [];
+import axios from 'axios';
+
+// Detect the current host automatically for the API
+const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+const API_URL = `http://${currentHost}:8081/api/auth`;
 
 class AuthService {
   async signup(email, password) {
-    if (!email || !password) {
-      throw new Error('Email and password are required');
+    try {
+      const response = await axios.post(`${API_URL}/signup`, { email, password });
+      
+      // If signup automatically logs user in or returns token:
+      if (response.data.token) {
+        this._setSession(response.data);
+      }
+      return response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Signup failed');
     }
-    if (password.length < 6) {
-      throw new Error('Password must be at least 6 characters');
-    }
-    const userExists = MOCK_USERS.find((u) => u.email === email);
-    if (userExists) {
-      throw new Error('User already exists');
-    }
-    const mockUser = {
-      id: `user-${Date.now()}`,
-      email,
-      password,
-      createdAt: new Date().toISOString(),
-    };
-    MOCK_USERS.push(mockUser);
-    const token = this._generateMockToken(mockUser.id, email);
-    return {
-      userId: mockUser.id,
-      email: mockUser.email,
-      token,
-    };
   }
 
   async login(email, password) {
-    if (!email || !password) {
-      throw new Error('Email and password are required');
+    try {
+      const response = await axios.post(`${API_URL}/login`, { email, password });
+      
+      if (response.data.token) {
+        this._setSession(response.data);
+      }
+      return response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Invalid email or password');
     }
-    const user = MOCK_USERS.find((u) => u.email === email && u.password === password);
-    if (!user) {
-      throw new Error('Invalid email or password');
-    }
-    const token = this._generateMockToken(user.id, email);
-    localStorage.setItem('authToken', token);
-    localStorage.setItem('userEmail', email);
-    localStorage.setItem('userId', user.id);
-    return {
-      userId: user.id,
-      email: user.email,
-      token,
-    };
+  }
+
+  _setSession(authData) {
+    localStorage.setItem('authToken', authData.token);
+    localStorage.setItem('userEmail', authData.user.email);
+    localStorage.setItem('userId', authData.user.id);
   }
 
   logout() {
@@ -67,17 +59,6 @@ class AuthService {
   isAuthenticated() {
     return !!this.getToken();
   }
-
-  _generateMockToken(userId, email) {
-    const payload = {
-      userId,
-      email,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 86400 * 7,
-    };
-    const tokenString = JSON.stringify(payload);
-    return btoa(tokenString);
-  }
 }
 
-export default new AuthService();  
+export default new AuthService();
