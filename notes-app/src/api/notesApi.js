@@ -1,10 +1,12 @@
 import axios from 'axios';
 import authService from '../auth/authService';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
+// Automatically detect the current IP/hostname from the browser
+const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+const API_URL = `http://${currentHost}:8081/api`;
 
 const api = axios.create({
-  baseURL: 'http://13.218.186.168/api',
+  baseURL: API_URL,
 });
 
 // Add token to requests
